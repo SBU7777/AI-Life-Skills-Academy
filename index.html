@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Life Skills Academy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Rajdhani:wght@600;700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Three.js Core, Loaders & Addons -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --neon-cyan: #00e5ff;
+      --neon-orange: #ff7b00;
+      --neon-green: #00e676;
+      --neon-yellow: #ffd600;
+      --neon-magenta: #e040fb;
+      --panel-bg: rgba(6, 12, 26, 0.85);
+      --panel-border: rgba(0, 229, 255, 0.4);
+      --hud-font: 'Chakra Petch', sans-serif;
+      --body-font: 'Outfit', sans-serif;
+      --title-font: 'Rajdhani', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #070b16; font-family: var(--body-font); color: #fff; font-size: 13px; }
+    #webgl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; outline: none; }
+
+    #game-ui {
+      position: absolute; inset: 0; z-index: 10; pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between; padding: 0.85rem;
+    }
+    .interactive, button, input, textarea { pointer-events: auto; }
+
+    .hud-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.65), inset 0 0 12px rgba(0,229,255,0.08);
+      padding: 0.5rem 0.85rem;
+      max-width: fit-content;
+    }
+
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+      pointer-events: none;
+    }
+
+    .academy-badge {
+      font-family: var(--title-font);
+      font-size: 1.05rem;
+      letter-spacing: 1.5px;
+      color: var(--neon-cyan);
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1.1;
+      text-shadow: 0 0 10px rgba(0,229,255,0.45);
+    }
+    .academy-sub {
+      font-size: 0.62rem;
+      color: var(--neon-yellow);
+      letter-spacing: 0.8px;
+      font-family: var(--hud-font);
+      margin-bottom: 0.3rem;
+    }
+
+    .hud-stats {
+      display: flex;
+      gap: 0.85rem;
+      align-items: center;
+      font-family: var(--hud-font);
+    }
+    .stat-label { font-size: 0.58rem; text-transform: uppercase; color: #94a3b8; }
+    .stat-val { font-size: 0.95rem; font-weight: 700; color: var(--neon-cyan); }
+
+    .progress-bar-slot {
+      width: 85px;
+      height: 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid var(--panel-border);
+    }
+    .progress-bar-active { width: 0%; height: 100%; background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green)); }
+
+    .top-right-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.4rem;
+      pointer-events: none;
+    }
+
+    .nav-bar {
+      display: flex;
+      gap: 0.3rem;
+      padding: 0.25rem 0.45rem;
+    }
+
+    .btn-tool {
+      background: rgba(0, 229, 255, 0.12);
+      border: 1px solid var(--neon-cyan);
+      color: #fff;
+      padding: 0.25rem 0.6rem;
+      font-weight: 700;
+      font-family: var(--hud-font);
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.72rem;
+      transition: all 0.2s;
+    }
+    .btn-tool:hover { background: var(--neon-cyan); color: #000; box-shadow: 0 0 12px rgba(0,229,255,0.6); }
+    .btn-admin { border-color: var(--neon-magenta); color: var(--neon-magenta); }
+
+    .minimap-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.2rem;
+      padding: 0.35rem;
+    }
+    .minimap-title { font-family: var(--hud-font); font-size: 0.58rem; color: var(--neon-yellow); letter-spacing: 1px; }
+    #minimap-canvas { width: 75px; height: 75px; border-radius: 50%; border: 1.5px solid var(--neon-cyan); background: rgba(4, 9, 20, 0.95); }
+
+    .hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      width: 100%;
+      pointer-events: none;
+    }
+
+    .hud-controls-info { font-size: 0.7rem; color: #94a3b8; line-height: 1.3; }
+    .hud-controls-info strong { color: var(--neon-orange); }
+    .hud-zone-indicator {
+      font-family: var(--title-font);
+      font-size: 0.95rem;
+      letter-spacing: 1.2px;
+      color: var(--neon-cyan);
+      border-left: 3px solid var(--neon-cyan);
+      padding-left: 0.5rem;
+      text-transform: uppercase;
+      text-shadow: 0 0 8px rgba(0,229,255,0.4);
+    }
+
+    .prompt-interaction-toast {
+      position: absolute; bottom: 4rem; left: 50%; transform: translateX(-50%);
+      padding: 0.5rem 1.3rem; background: rgba(6, 14, 30, 0.95); border: 1.5px solid var(--neon-yellow);
+      border-radius: 20px; color: var(--neon-yellow); font-family: var(--hud-font); font-weight: 700; font-size: 0.78rem;
+      display: none; cursor: pointer; pointer-events: auto;
+      box-shadow: 0 0 20px rgba(255,214,0,0.45);
+    }
+
+    .modal-overlay {
+      position: absolute; inset: 0; background: rgba(4, 8, 18, 0.88); backdrop-filter: blur(10px);
+      z-index: 100; display: flex; justify-content: center; align-items: center; padding: 1rem; pointer-events: auto;
+    }
+    .modal-window { width: 100%; max-width: 540px; max-height: 86vh; overflow-y: auto; padding: 1.4rem; position: relative; }
+    .modal-header { border-bottom: 1px solid var(--panel-border); padding-bottom: 0.6rem; margin-bottom: 0.85rem; display: flex; justify-content: space-between; align-items: center; }
+    .modal-title { font-family: var(--title-font); font-size: 1.25rem; color: var(--neon-cyan); }
+    .btn-close { background: transparent; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer; }
+
+    .btn-choice {
+      display: block; width: 100%; text-align: left; padding: 0.7rem 0.85rem; margin-bottom: 0.5rem;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--panel-border); border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .btn-choice:hover { background: rgba(0, 229, 255, 0.15); border-color: var(--neon-cyan); transform: translateX(3px); }
+    .btn-choice strong { display: block; color: var(--neon-cyan); margin-bottom: 0.1rem; font-family: var(--hud-font); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--neon-orange), #ff4500); border: none; color: #fff;
+      font-family: var(--hud-font); font-size: 0.82rem; font-weight: 700; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(255,123,0,0.45);
+    }
+    .input-field, .console-input {
+      width: 100%; padding: 0.5rem; margin: 0.25rem 0 0.7rem 0; background: rgba(0, 0, 0, 0.8);
+      border: 1px solid var(--panel-border); border-radius: 5px; color: #fff; font-family: var(--body-font); font-size: 0.85rem;
+    }
+    .console-input { height: 85px; font-family: monospace; resize: vertical; }
+    .feedback-box { border-radius: 5px; padding: 0.75rem; margin-top: 0.75rem; font-size: 0.82rem; line-height: 1.4; }
+    .feedback-box.success { background: rgba(0, 230, 118, 0.15); border: 1px solid var(--neon-green); color: #d1ffd6; }
+    .feedback-box.refine { background: rgba(255, 123, 0, 0.15); border: 1px solid var(--neon-orange); color: #ffe4cc; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <canvas id="webgl-canvas"></canvas>
+
+  <div id="game-ui">
+    <header class="hud-top">
+      <div class="hud-card interactive">
+        <div class="academy-badge">AI Life Skills Academy</div>
+        <div class="academy-sub">Everyday People. Real Skills.</div>
+        <div class="hud-stats">
+          <div><div class="stat-label">EXP</div><div class="stat-val" id="hud-xp">0</div></div>
+          <div><div class="stat-label">Streak</div><div class="stat-val">5 Days</div></div>
+          <div><div class="stat-label">Progress</div><div class="progress-bar-slot"><div class="progress-bar-active" id="hud-progress"></div></div></div>
+        </div>
+      </div>
+
+      <div class="top-right-panel">
+        <nav class="hud-card nav-bar interactive">
+          <button class="btn-tool" id="btn-top-auth">Login / Register</button>
+          <button class="btn-tool btn-admin hidden" id="btn-admin-panel">Admin</button>
+        </nav>
+        <div class="hud-card minimap-wrapper interactive">
+          <div class="minimap-title">RADAR</div>
+          <canvas id="minimap-canvas" width="75" height="75"></canvas>
+        </div>
+      </div>
+    </header>
+
+    <div class="prompt-interaction-toast interactive" id="interaction-toast">PRESS [E] TO OPEN TERMINAL</div>
+
+    <footer class="hud-bottom">
+      <div class="hud-card hud-controls-info interactive">
+        <div><strong>W A S D / Arrows</strong>: Run avatar</div>
+        <div><strong>E / Tap toast</strong>: Access terminal</div>
+        <div><strong>Right Click + Drag</strong>: Orbit camera</div>
+      </div>
+      <div class="hud-card hud-zone-indicator interactive" id="current-zone-tag">Academy Central Quad</div>
+    </footer>
+  </div>
+
+  <div class="modal-overlay hidden" id="modal-container">
+    <div class="hud-card modal-window interactive" id="modal-content"></div>
+  </div>
+
+  <script>
+    const gameState = {
+      xp: 0, streak: 5,
+      zones: { comm: false, travel: false, finance: false, capstone: false },
+      learnerName: 'Academy Explorer'
+    };
+
+    const scene = new THREE.Scene();
+
+    // Procedural Synthwave Sunset Canvas Sky (Active Fallback)
+    function buildSynthwaveSky() {
+      const c = document.createElement('canvas');
+      c.width = 1024; c.height = 1024;
+      const ctx = c.getContext('2d');
+
+      const g = ctx.createLinearGradient(0, 0, 0, 1024);
+      g.addColorStop(0.0, '#0c1228');
+      g.addColorStop(0.35, '#221b4a');
+      g.addColorStop(0.58, '#592c64');
+      g.addColorStop(0.72, '#9e4a5d');
+      g.addColorStop(0.84, '#d77651');
+      g.addColorStop(0.92, '#f2ab6a');
+      g.addColorStop(1.0, '#2b1b36');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 1024, 1024);
+
+      // Sunset grid horizon lines
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.22)';
+      ctx.lineWidth = 1.5;
+      for (let y = 780; y <= 940; y += 16) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke();
+      }
+
+      // Golden horizon sun
+      const sunGrad = ctx.createRadialGradient(280, 720, 10, 280, 720, 150);
+      sunGrad.addColorStop(0, '#fff6db');
+      sunGrad.addColorStop(0.3, '#ffa347');
+      sunGrad.addColorStop(0.7, '#e44a60');
+      sunGrad.addColorStop(1, 'rgba(228, 74, 96, 0)');
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.arc(280, 720, 150, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#4c2552';
+      for (let s = 675; s < 770; s += 13) {
+        ctx.fillRect(130, s, 300, 3.5);
+      }
+
+      return new THREE.CanvasTexture(c);
+    }
+
+    const skyMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(350, 32, 20),
+      new THREE.MeshBasicMaterial({ map: buildSynthwaveSky(), side: THREE.BackSide })
+    );
+    scene.add(skyMesh);
+    scene.fog = new THREE.FogExp2(0x352348, 0.0055);
+
+    // Camera Configuration
+    const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 800);
+    const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-canvas'), antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    // Lighting Array
+    scene.add(new THREE.AmbientLight(0xd9e3f0, 0.85));
+    const sunLight = new THREE.DirectionalLight(0xffeed9, 1.45);
+    sunLight.position.set(-70, 80, -90);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.bias = -0.0004;
+    scene.add(sunLight);
+
+    const cyanRim = new THREE.DirectionalLight(0x00e5ff, 1.1);
+    cyanRim.position.set(70, 50, 90);
+    scene.add(cyanRim);
+
+    const walkableMeshes = [];
+    const interactiveTerminals = [];
+    const floatingHoloScreens = [];
+
+    // Sci-Fi Platforms & Hub Network
+    const islandsConfig = [
+      { id: 'hub', name: 'Academy Central Quad', x: 0, z: 0, r: 18, trim: 0x00e5ff },
+      { id: 'travel', name: 'Theme Zone 1: Everyday Life', x: 0, z: 46, r: 14, trim: 0x00e676 },
+      { id: 'comm', name: 'Theme Zone 2: Communication District', x: -46, z: 0, r: 14, trim: 0x00e5ff },
+      { id: 'finance', name: 'Theme Zone 3: Finance Outpost', x: 46, z: 0, r: 14, trim: 0xffd600 },
+      { id: 'capstone', name: 'Theme Zone 4: Capstone Peak', x: 0, z: -46, r: 13, trim: 0xe040fb }
+    ];
+
+    islandsConfig.forEach(isl => {
+      const g = new THREE.Group();
+      g.position.set(isl.x, 0, isl.z);
+
+      const top = new THREE.Mesh(
+        new THREE.CylinderGeometry(isl.r, isl.r + 1.2, 2.2, 36),
+        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.3 })
+      );
+      top.position.y = -1.1;
+      top.receiveShadow = true;
+      g.add(top);
+      walkableMeshes.push(top);
+
+      const chasis = new THREE.Mesh(
+        new THREE.ConeGeometry(isl.r + 1.2, 10, 20),
+        new THREE.MeshStandardMaterial({ color: 0x111726, roughness: 0.65, metalness: 0.6 })
+      );
+      chasis.rotation.x = Math.PI;
+      chasis.position.y = -7.0;
+      g.add(chasis);
+
+      const rim = new THREE.Mesh(
+        new THREE.RingGeometry(isl.r - 0.3, isl.r, 36),
+        new THREE.MeshBasicMaterial({ color: isl.trim, side: THREE.DoubleSide })
+      );
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = 0.04;
+      g.add(rim);
+
+      if (isl.id !== 'hub') {
+        const stand = new THREE.Mesh(
+          new THREE.BoxGeometry(2.0, 2.2, 0.8),
+          new THREE.MeshStandardMaterial({ color: 0x0c1424, roughness: 0.35, metalness: 0.7 })
+        );
+        stand.position.set(0, 1.1, 0);
+        stand.castShadow = true;
+        g.add(stand);
+
+        const screen = new THREE.Mesh(
+          new THREE.PlaneGeometry(1.8, 1.1),
+          new THREE.MeshBasicMaterial({ color: isl.trim })
+        );
+        screen.position.set(0, 1.35, 0.41);
+        g.add(screen);
+
+        const beacon = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.55),
+          new THREE.MeshBasicMaterial({ color: isl.trim, wireframe: true })
+        );
+        beacon.position.set(0, 3.2, 0);
+        g.add(beacon);
+
+        interactiveTerminals.push({ id: isl.id, name: isl.name, worldPos: [isl.x, 0, isl.z], beacon });
+      }
+
+      scene.add(g);
+    });
+
+    // Bridges with Guide Arrows[cite: 7]
+    const bridgesConfig = [
+      { length: 18, pos: [0, 0, 31], axis: 'z' },
+      { length: 18, pos: [-31, 0, 0], axis: 'x' },
+      { length: 18, pos: [31, 0, 0], axis: 'x' },
+      { length: 18, pos: [0, 0, -31], axis: 'z' }
+    ];
+
+    bridgesConfig.forEach(b => {
+      const bg = new THREE.Group();
+      bg.position.set(b.pos[0], -0.15, b.pos[2]);
+
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(b.axis === 'z' ? 3.6 : b.length, 0.35, b.axis === 'z' ? b.length : 3.6),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.5 })
+      );
+      deck.receiveShadow = true;
+      bg.add(deck);
+      walkableMeshes.push(deck);
+
+      const railMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+      const r1 = new THREE.Mesh(new THREE.BoxGeometry(b.axis === 'z' ? 0.15 : b.length, 0.35, b.axis === 'z' ? b.length : 0.15), railMat);
+      r1.position.set(b.axis === 'z' ? -1.8 : 0, 0.22, b.axis === 'z' ? 0 : -1.8);
+      bg.add(r1);
+
+      const r2 = new THREE.Mesh(new THREE.BoxGeometry(b.axis === 'z' ? 0.15 : b.length, 0.35, b.axis === 'z' ? b.length : 0.15), railMat);
+      r2.position.set(b.axis === 'z' ? 1.8 : 0, 0.22, b.axis === 'z' ? 0 : 1.8);
+      bg.add(r2);
+
+      scene.add(bg);
+    });
+
+    // -------------------------------------------------------------
+    // AVATAR RIGGING & GLTF ASSET PIPELINE
+    // -------------------------------------------------------------
+    const playerGroup = new THREE.Group();
+    scene.add(playerGroup);
+
+    let characterMixer = null;
+    let customModelLoaded = false;
+
+    // GLTFLoader Slot: Loads 'assets/models/runner.glb' if present[cite: 7]
+    const gltfLoader = new THREE.GLTFLoader();
+    gltfLoader.load(
+      'assets/models/runner.glb',
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.set(1.1, 1.1, 1.1);
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        // Hide procedural fallback parts if model exists
+        torsoGroup.visible = false;
+        lLeg.visible = false;
+        rLeg.visible = false;
+
+        playerGroup.add(model);
+        customModelLoaded = true;
+
+        if (gltf.animations && gltf.animations.length > 0) {
+          characterMixer = new THREE.AnimationMixer(model);
+          const runAction = characterMixer.clipAction(gltf.animations[0]);
+          runAction.play();
+        }
+      },
+      undefined,
+      (err) => {
+        // Fallback: If external .glb is not yet added, use calibrated procedural runner
+        console.log("Using calibrated procedural runner mesh (add assets/models/runner.glb to override)");
+      }
+    );
+
+    // Procedural Fallback Mesh[cite: 7]
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.55, 16),
+      new THREE.MeshBasicMaterial({ color: 0x000, transparent: true, opacity: 0.6 })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.03;
+    playerGroup.add(shadow);
+
+    const jacketMat = new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.42, metalness: 0.12 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a37c, roughness: 0.65 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x141822, roughness: 0.75 });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const cyanMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+    const yellowMat = new THREE.MeshBasicMaterial({ color: 0xffd600 });
+    const ribMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 });
+
+    const torsoGroup = new THREE.Group();
+    torsoGroup.position.y = 1.15;
+    playerGroup.add(torsoGroup);
+
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.8, 16), jacketMat);
+    body.castShadow = true;
+    torsoGroup.add(body);
+
+    const waist = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.1, 16), ribMat);
+    waist.position.y = -0.42;
+    torsoGroup.add(waist);
+
+    const vGroup = new THREE.Group();
+    vGroup.position.set(0, 0.05, -0.36);
+    vGroup.rotation.y = Math.PI;
+    const vL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.02), whiteMat);
+    vL.position.set(-0.065, 0, 0); vL.rotation.z = -0.4;
+    vGroup.add(vL);
+    const vR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.02), whiteMat);
+    vR.position.set(0.065, 0, 0); vR.rotation.z = 0.4;
+    vGroup.add(vR);
+    torsoGroup.add(vGroup);
+
+    const headGroup = new THREE.Group();
+    headGroup.position.y = 0.72;
+    torsoGroup.add(headGroup);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), skinMat);
+    head.scale.set(0.9, 1.05, 0.95);
+    head.castShadow = true;
+    headGroup.add(head);
+
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x161210, roughness: 0.9 });
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), hairMat);
+    hair.position.set(0, 0.06, -0.03);
+    headGroup.add(hair);
+
+    const lArm = new THREE.Group(); lArm.position.set(-0.46, 0.3, 0); torsoGroup.add(lArm);
+    const lMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.65, 12), jacketMat); lMesh.position.y = -0.32; lArm.add(lMesh);
+    const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), skinMat); lHand.position.y = -0.72; lArm.add(lHand);
+
+    const rArm = new THREE.Group(); rArm.position.set(0.46, 0.3, 0); torsoGroup.add(rArm);
+    const rMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.65, 12), jacketMat); rMesh.position.y = -0.32; rArm.add(rMesh);
+    const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), skinMat); rHand.position.y = -0.72; rArm.add(rHand);
+
+    const lLeg = new THREE.Group(); lLeg.position.set(-0.18, 0.72, 0); playerGroup.add(lLeg);
+    const lLegM = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.72, 12), pantsMat); lLegM.position.y = -0.36; lLeg.add(lLegM);
+    const lStripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.65, 0.08), cyanMat); lStripe.position.set(-0.11, -0.32, 0); lLeg.add(lStripe);
+    const lShoe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.32), whiteMat); lShoe.position.set(0, -0.74, 0.06); lLeg.add(lShoe);
+
+    const rLeg = new THREE.Group(); rLeg.position.set(0.18, 0.72, 0); playerGroup.add(rLeg);
+    const rLegM = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.72, 12), pantsMat); rLegM.position.y = -0.36; rLeg.add(rLegM);
+    const rStripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.65, 0.08), cyanMat); rStripe.position.set(0.11, -0.32, 0); rLeg.add(rStripe);
+    const rShoe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.32), whiteMat); rShoe.position.set(0, -0.74, 0.06); rLeg.add(rShoe);
+
+    // Kinematics and Movement
+    const speed = 0.32;
+    const keys = {};
+    let camOrbit = 0;
+    let isDragging = false, lastMouseX = 0;
+    let animClock = 0;
+
+    window.addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyE') triggerTerminal(); });
+    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    window.addEventListener('pointerdown', (e) => { if (e.button === 2 || e.shiftKey) { isDragging = true; lastMouseX = e.clientX; } });
+    window.addEventListener('pointermove', (e) => { if (isDragging) { camOrbit -= (e.clientX - lastMouseX) * 0.005; lastMouseX = e.clientX; } });
+    window.addEventListener('pointerup', () => { isDragging = false; });
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    function updatePlayer(dt) {
+      let ix = 0, iz = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) iz -= 1;
+      if (keys['KeyS'] || keys['ArrowDown']) iz += 1;
+      if (keys['KeyA'] || keys['ArrowLeft']) ix -= 1;
+      if (keys['KeyD'] || keys['ArrowRight']) ix += 1;
+
+      const moving = ix !== 0 || iz !== 0;
+      if (moving) {
+        const fwd = new THREE.Vector3(-Math.sin(camOrbit), 0, -Math.cos(camOrbit));
+        const rgt = new THREE.Vector3(Math.cos(camOrbit), 0, -Math.sin(camOrbit));
+        const dir = new THREE.Vector3().addScaledVector(fwd, -iz).addScaledVector(rgt, ix).normalize();
+        playerGroup.position.addScaledVector(dir, speed);
+        playerGroup.rotation.y = THREE.MathUtils.lerp(playerGroup.rotation.y, Math.atan2(dir.x, dir.z), 0.25);
+
+        if (!customModelLoaded) {
+          animClock += dt * 16;
+          lLeg.rotation.x = Math.sin(animClock) * 0.8;
+          rLeg.rotation.x = -Math.sin(animClock) * 0.8;
+          lArm.rotation.x = -Math.sin(animClock) * 0.7;
+          rArm.rotation.x = Math.sin(animClock) * 0.7;
+          torsoGroup.position.y = 1.15 + Math.abs(Math.sin(animClock * 2)) * 0.06;
+        }
+      } else if (!customModelLoaded) {
+        lLeg.rotation.x = THREE.MathUtils.lerp(lLeg.rotation.x, 0, 0.2);
+        rLeg.rotation.x = THREE.MathUtils.lerp(rLeg.rotation.x, 0, 0.2);
+        lArm.rotation.x = THREE.MathUtils.lerp(lArm.rotation.x, 0, 0.2);
+        rArm.rotation.x = THREE.MathUtils.lerp(rArm.rotation.x, 0, 0.2);
+        torsoGroup.position.y = THREE.MathUtils.lerp(torsoGroup.position.y, 1.15, 0.2);
+      }
+
+      if (characterMixer) characterMixer.update(dt);
+    }
+
+    // Video-Accurate Camera Elevation[cite: 7]
+    function updateCamera() {
+      const dist = 10.5;
+      const height = 4.4;
+      const desired = new THREE.Vector3(
+        playerGroup.position.x + Math.sin(camOrbit) * dist,
+        playerGroup.position.y + height,
+        playerGroup.position.z + Math.cos(camOrbit) * dist
+      );
+      camera.position.lerp(desired, 0.1);
+      camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.2, playerGroup.position.z);
+    }
+
+    const toast = document.getElementById('interaction-toast');
+    let nearTerm = null;
+
+    function checkProximity() {
+      nearTerm = null;
+      interactiveTerminals.forEach(t => {
+        if (playerGroup.position.distanceTo(new THREE.Vector3(...t.worldPos)) < 4.5) nearTerm = t;
+      });
+      if (nearTerm) {
+        toast.style.display = 'block';
+        toast.innerText = `PRESS [E] TO ACCESS ${nearTerm.name.toUpperCase()}`;
+      } else {
+        toast.style.display = 'none';
+      }
+    }
+
+    function triggerTerminal() {
+      if (!nearTerm) return;
+      if (nearTerm.id === 'travel') openTravelKiosk();
+      else if (nearTerm.id === 'comm') openCommKiosk();
+      else if (nearTerm.id === 'finance') openFinanceKiosk();
+      else if (nearTerm.id === 'capstone') openCapstoneKiosk();
+    }
+    toast.addEventListener('click', triggerTerminal);
+
+    const modal = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-content');
+    window.closeModal = () => modal.classList.add('hidden');
+
+    function openTravelKiosk() {
+      modalContent.innerHTML = `
+        <div class="modal-header">
+          <h2 class="modal-title">Theme Zone 1: Everyday Life</h2>
+          <button class="btn-close" onclick="closeModal()">&times;</button>
+        </div>
+        <p style="color:#94a3b8; margin-bottom:0.8rem;">Choose the best AI prompt to solve the budgeting problem:</p>
+        <button class="btn-choice" onclick="answerTravel(1)"><strong>Option A</strong> Plan a trip</button>
+        <button class="btn-choice" onclick="answerTravel(2)"><strong>Option B (Recommended)</strong> Plan a trip on a budget</button>
+        <button class="btn-choice" onclick="answerTravel(3)"><strong>Option C</strong> Prompt safety complex nest</button>
+        <div id="fb-area"></div>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    window.answerTravel = (c) => {
+      const fb = document.getElementById('fb-area');
+      if (c === 2) {
+        gameState.zones.travel = true;
+        gameState.xp += 500;
+        document.getElementById('hud-xp').innerText = gameState.xp;
+        document.getElementById('hud-progress').style.width = '25%';
+        fb.innerHTML = `<div class="feedback-box success"><strong>+500 Points &nbsp;|&nbsp; Streak: 5 Days</strong><br>Theme Zone Completed! Specifying "on a budget" guides AI toward realistic expenses.</div><button class="btn-primary" style="margin-top:0.8rem;" onclick="closeModal()">Complete Zone</button>`;
+      } else {
+        fb.innerHTML = `<div class="feedback-box refine">Option ${c === 1 ? 'A is too vague' : 'C is unrelated'}. Try Option B.</div>`;
+      }
+    };
+
+    function openCommKiosk() {
+      modalContent.innerHTML = `
+        <div class="modal-header"><h2 class="modal-title">Theme Zone 2: Communication</h2><button class="btn-close" onclick="closeModal()">&times;</button></div>
+        <p style="color:#94a3b8; margin-bottom:0.8rem;">Click 'Insert Starter Template' then transmit prompt:</p>
+        <button class="btn-tool" style="color:var(--neon-yellow); border-color:var(--neon-yellow); margin-bottom:0.6rem;" onclick="document.getElementById('c-in').value='Act as a professional mediator. Draft a calm email refusing the $1,200 extra charge without prior written authorization.'">Insert Starter Template</button>
+        <textarea id="c-in" class="console-input" placeholder="Draft prompt..."></textarea>
+        <button class="btn-primary" onclick="gameState.zones.comm=true; gameState.xp+=500; document.getElementById('hud-xp').innerText=gameState.xp; document.getElementById('hud-progress').style.width='50%'; closeModal();">Submit</button>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    function openFinanceKiosk() {
+      modalContent.innerHTML = `
+        <div class="modal-header"><h2 class="modal-title">Theme Zone 3: Finance</h2><button class="btn-close" onclick="closeModal()">&times;</button></div>
+        <p style="color:#94a3b8; margin-bottom:0.8rem;">Click 'Insert Starter Template' then transmit prompt:</p>
+        <button class="btn-tool" style="color:var(--neon-yellow); border-color:var(--neon-yellow); margin-bottom:0.6rem;" onclick="document.getElementById('f-in').value='Act as a financial planner. Parse these expenses into 50% Needs, 30% Wants, and 20% Savings tables and flag subscription traps.'">Insert Starter Template</button>
+        <textarea id="f-in" class="console-input" placeholder="Draft prompt..."></textarea>
+        <button class="btn-primary" onclick="gameState.zones.finance=true; gameState.xp+=500; document.getElementById('hud-xp').innerText=gameState.xp; document.getElementById('hud-progress').style.width='75%'; closeModal();">Submit</button>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    function openCapstoneKiosk() {
+      modalContent.innerHTML = `
+        <div class="modal-header"><h2 class="modal-title">Theme Zone 4: Capstone Peak</h2><button class="btn-close" onclick="closeModal()">&times;</button></div>
+        <p style="color:#94a3b8; margin-bottom:0.8rem;">Claim your Certificate of Completion:</p>
+        <button class="btn-primary" onclick="confetti({particleCount:120}); closeModal();">Generate Certificate</button>
+      `;
+      modal.classList.remove('hidden');
+    }
+
+    const mm = document.getElementById('minimap-canvas').getContext('2d');
+    function drawRadar() {
+      mm.clearRect(0, 0, 75, 75);
+      mm.fillStyle = 'rgba(6, 12, 24, 0.92)'; mm.fillRect(0, 0, 75, 75);
+      const cx = 37.5, cy = 37.5, sc = 75 / 130;
+      islandsConfig.forEach(isl => {
+        mm.strokeStyle = '#' + isl.trim.toString(16).padStart(6, '0');
+        mm.beginPath(); mm.arc(cx + isl.x * sc, cy + isl.z * sc, isl.r * sc, 0, Math.PI * 2); mm.stroke();
+      });
+      mm.fillStyle = '#ff6600';
+      mm.beginPath(); mm.arc(cx + playerGroup.position.x * sc, cy + playerGroup.position.z * sc, 2.5, 0, Math.PI * 2); mm.fill();
+    }
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+
+      updatePlayer(dt);
+      updateCamera();
+      checkProximity();
+      drawRadar();
+
+      interactiveTerminals.forEach((t, i) => {
+        t.beacon.rotation.y += 0.02;
+        t.beacon.position.y = 3.2 + Math.sin(elapsed * 2.5 + i) * 0.2;
+      });
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
