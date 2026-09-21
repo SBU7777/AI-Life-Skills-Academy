@@ -8,9 +8,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Rajdhani:wght@600;700&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
   
-  <!-- Three.js Core, Loaders & Addons -->
+  <!-- Three.js Core, GLTF Loader, and Post-Processing (Bloom) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -120,7 +126,6 @@
       transition: all 0.2s;
     }
     .btn-tool:hover { background: var(--neon-cyan); color: #000; box-shadow: 0 0 12px rgba(0,229,255,0.6); }
-    .btn-admin { border-color: var(--neon-magenta); color: var(--neon-magenta); }
 
     .minimap-wrapper {
       display: flex;
@@ -212,8 +217,7 @@
 
       <div class="top-right-panel">
         <nav class="hud-card nav-bar interactive">
-          <button class="btn-tool" id="btn-top-auth">Login / Register</button>
-          <button class="btn-tool btn-admin hidden" id="btn-admin-panel">Admin</button>
+          <button class="btn-tool" id="btn-top-auth">Student Portal</button>
         </nav>
         <div class="hud-card minimap-wrapper interactive">
           <div class="minimap-title">RADAR</div>
@@ -247,36 +251,125 @@
 
     const scene = new THREE.Scene();
 
-    // Procedural Synthwave Sunset Canvas Sky (Active Fallback)
+    // -------------------------------------------------------------
+    // PROCEDURAL TEXTURE GENERATION (NO EXTERNAL IMAGES REQUIRED)
+    // -------------------------------------------------------------
+    function makeNoise(ctx, w, h, opacity) {
+      const img = ctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = (Math.random() - 0.5) * opacity * 255;
+        d[i] = Math.min(255, Math.max(0, d[i] + v));
+        d[i + 1] = Math.min(255, Math.max(0, d[i + 1] + v));
+        d[i + 2] = Math.min(255, Math.max(0, d[i + 2] + v));
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+
+    function buildSciFiDeckTexture() {
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#dce5f0';
+      ctx.fillRect(0, 0, 512, 512);
+
+      ctx.strokeStyle = '#8da3bd';
+      ctx.lineWidth = 4;
+      const step = 64;
+      for (let x = 0; x <= 512; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+      }
+      for (let y = 0; y <= 512; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+      }
+
+      ctx.fillStyle = '#64748b';
+      for (let x = 8; x < 512; x += step) {
+        for (let y = 8; y < 512; y += step) {
+          ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      makeNoise(ctx, 512, 512, 0.08);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(4, 4);
+      return tex;
+    }
+
+    function buildHighwayTexture() {
+      const c = document.createElement('canvas');
+      c.width = 256; c.height = 512;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#080e1a';
+      ctx.fillRect(0, 0, 256, 512);
+
+      ctx.strokeStyle = '#1b253b';
+      ctx.lineWidth = 2;
+      for (let y = 0; y < 512; y += 8) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
+      }
+
+      // High-emission neon side tracks
+      ctx.fillStyle = '#00ffff';
+      ctx.fillRect(16, 0, 10, 512);
+      ctx.fillRect(230, 0, 10, 512);
+
+      // Centered luminescent chevron arrows
+      for (let y = 30; y < 512; y += 90) {
+        ctx.beginPath();
+        ctx.moveTo(128, y);
+        ctx.lineTo(94, y + 42);
+        ctx.lineTo(108, y + 42);
+        ctx.lineTo(128, y + 16);
+        ctx.lineTo(148, y + 42);
+        ctx.lineTo(162, y + 42);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      makeNoise(ctx, 256, 512, 0.05);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(1, 3);
+      return tex;
+    }
+
+    const deckTex = buildSciFiDeckTexture();
+    const highwayTex = buildHighwayTexture();
+
+    // -------------------------------------------------------------
+    // VIDEO-ACCURATE SYNTHWAVE SKYBOX
+    // -------------------------------------------------------------
     function buildSynthwaveSky() {
       const c = document.createElement('canvas');
       c.width = 1024; c.height = 1024;
       const ctx = c.getContext('2d');
 
       const g = ctx.createLinearGradient(0, 0, 0, 1024);
-      g.addColorStop(0.0, '#0c1228');
-      g.addColorStop(0.35, '#221b4a');
-      g.addColorStop(0.58, '#592c64');
-      g.addColorStop(0.72, '#9e4a5d');
-      g.addColorStop(0.84, '#d77651');
-      g.addColorStop(0.92, '#f2ab6a');
-      g.addColorStop(1.0, '#2b1b36');
+      g.addColorStop(0.0, '#090d20');
+      g.addColorStop(0.35, '#201642');
+      g.addColorStop(0.58, '#582463');
+      g.addColorStop(0.72, '#9c405a');
+      g.addColorStop(0.84, '#d8704d');
+      g.addColorStop(0.92, '#f6aa66');
+      g.addColorStop(1.0, '#24142f');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, 1024, 1024);
 
-      // Sunset grid horizon lines
-      ctx.strokeStyle = 'rgba(0, 229, 255, 0.22)';
+      // Retro grid along the horizon
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.28)';
       ctx.lineWidth = 1.5;
       for (let y = 780; y <= 940; y += 16) {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke();
       }
 
-      // Golden horizon sun
+      // Sliced glowing sun
       const sunGrad = ctx.createRadialGradient(280, 720, 10, 280, 720, 150);
-      sunGrad.addColorStop(0, '#fff6db');
-      sunGrad.addColorStop(0.3, '#ffa347');
-      sunGrad.addColorStop(0.7, '#e44a60');
-      sunGrad.addColorStop(1, 'rgba(228, 74, 96, 0)');
+      sunGrad.addColorStop(0, '#fff4da');
+      sunGrad.addColorStop(0.3, '#ffa044');
+      sunGrad.addColorStop(0.7, '#e4445d');
+      sunGrad.addColorStop(1, 'rgba(228, 68, 93, 0)');
       ctx.fillStyle = sunGrad;
       ctx.beginPath();
       ctx.arc(280, 720, 150, 0, Math.PI * 2);
@@ -297,7 +390,7 @@
     scene.add(skyMesh);
     scene.fog = new THREE.FogExp2(0x352348, 0.0055);
 
-    // Camera Configuration
+    // Camera setup
     const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 800);
     const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-canvas'), antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -305,26 +398,53 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.15;
 
-    // Lighting Array
-    scene.add(new THREE.AmbientLight(0xd9e3f0, 0.85));
-    const sunLight = new THREE.DirectionalLight(0xffeed9, 1.45);
+    // -------------------------------------------------------------
+    // POST-PROCESSING PIPELINE (CINEMATIC UNREAL BLOOM)
+    // -------------------------------------------------------------
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.1,   // Bloom strength
+      0.45,  // Radius
+      0.82   // Threshold (only high-emission lights glow)
+    );
+
+    const composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+
+    // Multi-source studio lighting
+    scene.add(new THREE.AmbientLight(0xd9e3f0, 0.8));
+
+    const sunLight = new THREE.DirectionalLight(0xffeed9, 1.5);
     sunLight.position.set(-70, 80, -90);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
     sunLight.shadow.bias = -0.0004;
     scene.add(sunLight);
 
-    const cyanRim = new THREE.DirectionalLight(0x00e5ff, 1.1);
+    const cyanRim = new THREE.DirectionalLight(0x00e5ff, 1.2);
     cyanRim.position.set(70, 50, 90);
     scene.add(cyanRim);
+
+    // Distant mountain ranges
+    const mtnMat = new THREE.MeshStandardMaterial({ color: 0x1c172e, roughness: 0.95 });
+    for (let i = 0; i < 22; i++) {
+      const mH = 45 + Math.random() * 65;
+      const mW = 40 + Math.random() * 55;
+      const mCone = new THREE.Mesh(new THREE.ConeGeometry(mW, mH, 7), mtnMat);
+      const ang = (i / 22) * Math.PI * 2;
+      mCone.position.set(Math.cos(ang) * 260, -12 + mH / 2, Math.sin(ang) * 260);
+      scene.add(mCone);
+    }
 
     const walkableMeshes = [];
     const interactiveTerminals = [];
     const floatingHoloScreens = [];
 
-    // Sci-Fi Platforms & Hub Network
+    // Sci-Fi Floating Platforms
     const islandsConfig = [
       { id: 'hub', name: 'Academy Central Quad', x: 0, z: 0, r: 18, trim: 0x00e5ff },
       { id: 'travel', name: 'Theme Zone 1: Everyday Life', x: 0, z: 46, r: 14, trim: 0x00e676 },
@@ -337,25 +457,24 @@
       const g = new THREE.Group();
       g.position.set(isl.x, 0, isl.z);
 
-      const top = new THREE.Mesh(
-        new THREE.CylinderGeometry(isl.r, isl.r + 1.2, 2.2, 36),
-        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.3 })
-      );
+      const topMat = new THREE.MeshStandardMaterial({ map: deckTex, roughness: 0.35, metalness: 0.35 });
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(isl.r, isl.r + 1.2, 2.2, 48), topMat);
       top.position.y = -1.1;
       top.receiveShadow = true;
       g.add(top);
       walkableMeshes.push(top);
 
       const chasis = new THREE.Mesh(
-        new THREE.ConeGeometry(isl.r + 1.2, 10, 20),
-        new THREE.MeshStandardMaterial({ color: 0x111726, roughness: 0.65, metalness: 0.6 })
+        new THREE.ConeGeometry(isl.r + 1.2, 10, 24),
+        new THREE.MeshStandardMaterial({ color: 0x0f1524, roughness: 0.65, metalness: 0.6 })
       );
       chasis.rotation.x = Math.PI;
       chasis.position.y = -7.0;
       g.add(chasis);
 
+      // Neon rim ring (high emissive tone triggers bloom)
       const rim = new THREE.Mesh(
-        new THREE.RingGeometry(isl.r - 0.3, isl.r, 36),
+        new THREE.RingGeometry(isl.r - 0.3, isl.r, 48),
         new THREE.MeshBasicMaterial({ color: isl.trim, side: THREE.DoubleSide })
       );
       rim.rotation.x = -Math.PI / 2;
@@ -365,7 +484,7 @@
       if (isl.id !== 'hub') {
         const stand = new THREE.Mesh(
           new THREE.BoxGeometry(2.0, 2.2, 0.8),
-          new THREE.MeshStandardMaterial({ color: 0x0c1424, roughness: 0.35, metalness: 0.7 })
+          new THREE.MeshStandardMaterial({ color: 0x0a101d, roughness: 0.35, metalness: 0.7 })
         );
         stand.position.set(0, 1.1, 0);
         stand.castShadow = true;
@@ -391,7 +510,7 @@
       scene.add(g);
     });
 
-    // Bridges with Guide Arrows[cite: 7]
+    // Runway Bridges with Bloom-Enabled Center Chevrons
     const bridgesConfig = [
       { length: 18, pos: [0, 0, 31], axis: 'z' },
       { length: 18, pos: [-31, 0, 0], axis: 'x' },
@@ -405,13 +524,13 @@
 
       const deck = new THREE.Mesh(
         new THREE.BoxGeometry(b.axis === 'z' ? 3.6 : b.length, 0.35, b.axis === 'z' ? b.length : 3.6),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.5 })
+        new THREE.MeshStandardMaterial({ map: highwayTex, roughness: 0.35, metalness: 0.5 })
       );
       deck.receiveShadow = true;
       bg.add(deck);
       walkableMeshes.push(deck);
 
-      const railMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+      const railMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
       const r1 = new THREE.Mesh(new THREE.BoxGeometry(b.axis === 'z' ? 0.15 : b.length, 0.35, b.axis === 'z' ? b.length : 0.15), railMat);
       r1.position.set(b.axis === 'z' ? -1.8 : 0, 0.22, b.axis === 'z' ? 0 : -1.8);
       bg.add(r1);
@@ -423,6 +542,51 @@
       scene.add(bg);
     });
 
+    // Floating Hologram Screens with Glowing Borders
+    function makeHoloBillboard(text, sub, x, y, z, rotY) {
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      g.rotation.y = rotY;
+
+      const c = document.createElement('canvas');
+      c.width = 512; c.height = 256;
+      const ctx = c.getContext('2d');
+
+      ctx.fillStyle = 'rgba(6, 18, 38, 0.85)';
+      ctx.fillRect(0, 0, 512, 256);
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(6, 6, 500, 244);
+
+      ctx.fillStyle = '#00ffff';
+      ctx.font = 'bold 36px "Chakra Petch", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 95);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '22px "Outfit", sans-serif';
+      ctx.fillText(sub, 256, 155);
+
+      ctx.fillStyle = '#ff7b00';
+      ctx.fillRect(80, 185, 352, 10);
+
+      const mat = new THREE.MeshBasicMaterial({
+        map: new THREE.CanvasTexture(c),
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide
+      });
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 3.2), mat);
+      g.add(plane);
+
+      scene.add(g);
+      floatingHoloScreens.push({ group: g, baseY: y });
+    }
+
+    makeHoloBillboard('SKILL LEVEL', 'Level 3 | Everyday AI', 0, 7.5, 22, 0);
+    makeHoloBillboard('MISSION RADAR', '10.9% Completed', -16, 6.5, 12, 0.4);
+    makeHoloBillboard('INNOVATION HUB', 'Everyday Applied Workflows', 16, 6.5, 12, -0.4);
+
     // -------------------------------------------------------------
     // AVATAR RIGGING & GLTF ASSET PIPELINE
     // -------------------------------------------------------------
@@ -432,13 +596,14 @@
     let characterMixer = null;
     let customModelLoaded = false;
 
-    // GLTFLoader Slot: Loads 'assets/models/runner.glb' if present[cite: 7]
+    // Load rigged .glb model automatically when present in repository
     const gltfLoader = new THREE.GLTFLoader();
     gltfLoader.load(
       'assets/models/runner.glb',
       (gltf) => {
         const model = gltf.scene;
-        model.scale.set(1.1, 1.1, 1.1);
+        model.scale.set(1.15, 1.15, 1.15);
+        model.position.y = 0;
         model.traverse((child) => {
           if (child.isMesh) {
             child.castShadow = true;
@@ -461,13 +626,12 @@
         }
       },
       undefined,
-      (err) => {
-        // Fallback: If external .glb is not yet added, use calibrated procedural runner
-        console.log("Using calibrated procedural runner mesh (add assets/models/runner.glb to override)");
+      () => {
+        console.log("Using procedural runner mesh. Place assets/models/runner.glb into repository to override.");
       }
     );
 
-    // Procedural Fallback Mesh[cite: 7]
+    // Procedural Fallback Mesh
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(0.55, 16),
       new THREE.MeshBasicMaterial({ color: 0x000, transparent: true, opacity: 0.6 })
@@ -479,10 +643,10 @@
     const jacketMat = new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.42, metalness: 0.12 });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xd4a37c, roughness: 0.65 });
     const pantsMat = new THREE.MeshStandardMaterial({ color: 0x141822, roughness: 0.75 });
-    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const cyanMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
-    const yellowMat = new THREE.MeshBasicMaterial({ color: 0xffd600 });
     const ribMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const cyanMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    const yellowMat = new THREE.MeshBasicMaterial({ color: 0xffd600 });
 
     const torsoGroup = new THREE.Group();
     torsoGroup.position.y = 1.15;
@@ -496,6 +660,11 @@
     waist.position.y = -0.42;
     torsoGroup.add(waist);
 
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.09, 16), ribMat);
+    collar.position.y = 0.44;
+    torsoGroup.add(collar);
+
+    // Signature 'V' on back of jacket
     const vGroup = new THREE.Group();
     vGroup.position.set(0, 0.05, -0.36);
     vGroup.rotation.y = Math.PI;
@@ -506,6 +675,10 @@
     vR.position.set(0.065, 0, 0); vR.rotation.z = 0.4;
     vGroup.add(vR);
     torsoGroup.add(vGroup);
+
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.18, 12), skinMat);
+    neck.position.y = 0.48;
+    torsoGroup.add(neck);
 
     const headGroup = new THREE.Group();
     headGroup.position.y = 0.72;
@@ -533,11 +706,13 @@
     const lLegM = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.72, 12), pantsMat); lLegM.position.y = -0.36; lLeg.add(lLegM);
     const lStripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.65, 0.08), cyanMat); lStripe.position.set(-0.11, -0.32, 0); lLeg.add(lStripe);
     const lShoe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.32), whiteMat); lShoe.position.set(0, -0.74, 0.06); lLeg.add(lShoe);
+    const lSole = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.04, 0.33), yellowMat); lSole.position.set(0, -0.79, 0.06); lLeg.add(lSole);
 
     const rLeg = new THREE.Group(); rLeg.position.set(0.18, 0.72, 0); playerGroup.add(rLeg);
     const rLegM = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.72, 12), pantsMat); rLegM.position.y = -0.36; rLeg.add(rLegM);
     const rStripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.65, 0.08), cyanMat); rStripe.position.set(0.11, -0.32, 0); rLeg.add(rStripe);
     const rShoe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.32), whiteMat); rShoe.position.set(0, -0.74, 0.06); rLeg.add(rShoe);
+    const rSole = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.04, 0.33), yellowMat); rSole.position.set(0, -0.79, 0.06); rLeg.add(rSole);
 
     // Kinematics and Movement
     const speed = 0.32;
@@ -587,7 +762,6 @@
       if (characterMixer) characterMixer.update(dt);
     }
 
-    // Video-Accurate Camera Elevation[cite: 7]
     function updateCamera() {
       const dist = 10.5;
       const height = 4.4;
@@ -712,18 +886,24 @@
       checkProximity();
       drawRadar();
 
+      floatingHoloScreens.forEach((scr, idx) => {
+        scr.group.position.y = scr.baseY + Math.sin(elapsed * 1.8 + idx) * 0.15;
+      });
+
       interactiveTerminals.forEach((t, i) => {
         t.beacon.rotation.y += 0.02;
         t.beacon.position.y = 3.2 + Math.sin(elapsed * 2.5 + i) * 0.2;
       });
 
-      renderer.render(scene, camera);
+      // Render through UnrealBloomPass composer
+      composer.render();
     }
 
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
     });
 
     animate();
